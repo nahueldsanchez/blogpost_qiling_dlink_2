@@ -1,4 +1,8 @@
-# Analyzing a buffer overflow in the DLINK DIR-645 with Qiling framework, Part II
+# Analyzing a buffer overflow in the DLINK DIR-645 with Qiling framework, Part II [![Twitter URL](https://img.shields.io/twitter/url?style=social&url=https%3A%2F%2Fgithub.com%2Fnahueldsanchez%2Fblogpost_qiling_dlink_2)](https://twitter.com/intent/tweet?text=https://github.com/nahueldsanchez/blogpost_qiling_dlink_2)
+
+
+
+[![Twitter Follow](https://img.shields.io/twitter/follow/nahueldsanchez_?color=1DA1F2&logo=twitter&style=for-the-badge)](https://twitter.com/nahueldsanchez_?s=20) 
 
 ## Introduction
 
