@@ -8,6 +8,18 @@
 
 Hello everyone! Continuing with our saga of blog posts about Qiling, today we'll analyze how we can write an exploit that will be "almost" functional in Qiling and the process that I followed to do it. If you did not read my previous blog post [Analyzing a buffer overflow...with Qiling Framework,Part I](https://github.com/nahueldsanchez/blogpost_qiling_dlink_1), I encourage you to do so.
 
+### **Table of Contents**
+1. [Writing the exploit](##Writing-the-exploit)
+2. [Making system call "work"](#Making-system-call-"work")
+3. [Writing the exploit to make it work in Qiling](#Writing-the-exploit-to-make-it-work-in-Qiling)  
+    - [Understanding how MIPS calling convention works](#Understanding-how-MIPS-calling-convention-works)
+    - [Playing with ROP and finishing the exploit](#Playing-with-ROP-and-finishing-the-exploit)
+4. [References](#References)
+
+
+
+
+
 ## Writing the exploit
 
 Just to have some context, in the first part we identified the vulnerability, how to trigger it and its underlying cause. We'll continue from this point.
@@ -95,7 +107,7 @@ ChildProcessError: [Errno 10] No child processes
 ...
 ```
 It looks like it worked!? I think that what's happening is that we are reaching `system` function and at some point `system` is trying to use the `fork syscall`, which Qiling does not support.   
-To confirm that my idea was working I did two things: First, I set a breakpoint on `system` and checked that at some point I hit the breakpoint (it happened); Second, and more interesting to show, I changed the call to `system` for `exit`, let's see what happens:
+To confirm that my idea was working I did two things: First, I set a breakpoint on `system` and checked that I hit the breakpoint at some point (it happened); Second, and more interesting to show, I changed the call to `system` for `exit`. Let's see what happens:
 
 ```Python
 def simulate_exploitation(ql):
@@ -116,7 +128,7 @@ Content-Type: text/xml
 ...
 ```
 
-Much better! As we can see the program exits gracefully with the call to `exit()`. We can be sure that the idea for the exploit works!. Let's work on transforming this simulation into something real.
+Much better! As we can see the program exits gracefully with the call to `exit()`. We can be sure that the idea for the exploit works! Let's work on transforming this simulation into something real.
 
 ### Making system call "work"
 
@@ -533,7 +545,9 @@ ioctl(0x1, 0x540d, 0x7ff3c8c8) = -1
 
 We can see the strings printed from our previous blog, the call to `nanosleep` made by the `sleep()` function and finally the call to `execve`. Job done.
 
-You can find the Python script to reproduce this [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_2/blob/master/qiling_dlink_exploit.py). I left comments to the helper functions mentioned during the blog post in case you want to play around or do some testing.
+You can find the Python script to reproduce this [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_2/blob/master/qiling_dlink_exploit.py). I left comments to the helper functions mentioned during the blog post in case you want to play around or do some testing.   
+
+[![Website](https://img.shields.io/website?label=nahueldsanchez&up_color=success&up_message=Blog&url=https%3A%2F%2Fnahueldsanchez.wordpress.com%2F)](https://nahueldsanchez.wordpress.com/)
 
 # References
 
