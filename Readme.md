@@ -10,7 +10,7 @@ Hello everyone! Continuing with our saga of blog posts about Qiling, today we'll
 
 ### **Table of Contents**
 1. [Writing the exploit](##Writing-the-exploit)
-2. [Making system call "work"](#Making-system-call-"work")
+2. [Making system call "work"](#Making-system-call)
 3. [Writing the exploit to make it work in Qiling](#Writing-the-exploit-to-make-it-work-in-Qiling)  
     - [Understanding how MIPS calling convention works](#Understanding-how-MIPS-calling-convention-works)
     - [Playing with ROP and finishing the exploit](#Playing-with-ROP-and-finishing-the-exploit)
