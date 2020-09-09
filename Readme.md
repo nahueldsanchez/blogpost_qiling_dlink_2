@@ -6,12 +6,12 @@
 
 ## Introduction
 
-Hello everyone! continuing with our saga of blog posts about Qiling, today we'll analyze how we can write an exploit that will be "almost" functional in Qiling and the process that I followed to do it. If you did not read my previous blog post, I encourage you to do so, you can find it [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_1).
+Hello everyone! Continuing with our saga of blog posts about Qiling, today we'll analyze how we can write an exploit that will be "almost" functional in Qiling and the process that I followed to do it. If you did not read my previous blog post [Analyzing a buffer overflow...with Qiling Framework,Part I](https://github.com/nahueldsanchez/blogpost_qiling_dlink_1), I encourage you to do so.
 
 ## Writing the exploit
 
-Just to have some context, in the first part we identified the vulnerability, how to trigger it and the underlying cause of it. We'll continue from this point.
-We know that our program will crash returning from address `0x0040c594`, this means function `hedwig_main`:
+Just to have some context, in the first part we identified the vulnerability, how to trigger it and its underlying cause. We'll continue from this point.
+We know that our program will crash returning from address `0x0040c594`, that is, function `hedwig_main`:
 
 ```
 ...
@@ -21,7 +21,7 @@ We know that our program will crash returning from address `0x0040c594`, this me
 ...
 ```
 
-We also know that we are overwriting a lot of memory in the stack and we control good amount of registers:
+We also know that we are overwriting a lot of memory in the stack and we control a good number of registers:
 
 ```
 ...
@@ -51,13 +51,13 @@ We also know that we are overwriting a lot of memory in the stack and we control
 ```
 Considering this scenario, my idea was to overwrite the return address with the address of `system`, previously setting up the parameters as needed. I know that this should work as the exploit included in Metasploit does the same.
 
-To test my hypothesis, I've decided as a first step to get rid of all the complexities and _simulate_ the exploitation. The idea was to allocate some memory, write our command there, load the memory address in the required register and change the return address to point to `system` function. Sounds like a lot of work right? Not for Qiling, check it out:
+To test my hypothesis, I've decided,as a first step, to get rid of all the complexities and _simulate_ the exploitation. The idea was to allocate some memory, write our command there, load the memory address in the required register and change the return address to point to `system` function. Sounds like a lot of work right? Not for Qiling, check it out:
 
 ```Python
 ...
-RETURN_CORRUPTED_STACK = 0x0040c594     # From the previous blog post
+RETURN_CORRUPTED_STACK = 0x0040c594     # From the previous blog post.
 QILING_SYSTEM = 0x0041eb50              # This was retrieved enabling debugging
-                                        # and connecting to GDB, once in the
+                                        # and connecting to GDB.Once at the
                                         # initial breakpoint I executed:
                                         # x/10i system to obtain system function addr
 
@@ -79,7 +79,7 @@ ql.hook_address(simulate_exploit, RETURN_CORRUPTED_STACK)   # We'll call our cal
 ql.run()
 ```
 
-As you can see it's pretty straight forward to simulate our exploit. Let's see what happens:
+As you can see it's pretty straightforward to simulate our exploit. Let's see what happens:
 
 ```
 ...
@@ -94,7 +94,8 @@ rt_sigaction(0x2, 0x7ff3c430, = 0x7ff3c450) = 0
 ChildProcessError: [Errno 10] No child processes
 ...
 ```
-It looks like it worked !?. I think that what's happening is that we are reaching system function and at some point system is trying to use the `fork syscall` which Qiling does not support. To confirm that my idea was working I did two things. First I put a breakpoint on `system` and checked that at some point I hit the breakpoint (it happened). Secondly and more interesting to show, I've changed the call to `system` for `exit`, let's see what happens:
+It looks like it worked!? I think that what's happening is that we are reaching `system` function and at some point `system` is trying to use the `fork syscall`, which Qiling does not support.   
+To confirm that my idea was working I did two things: First, I set a breakpoint on `system` and checked that at some point I hit the breakpoint (it happened); Second, and more interesting to show, I changed the call to `system` for `exit`, let's see what happens:
 
 ```Python
 def simulate_exploitation(ql):
@@ -230,7 +231,7 @@ YES!, we can see the output of the execve syscall with our command. Now, we have
 
 Coming back to our main topic, let's do a quick recap on where the code was vulnerable:
 
-We have our `hedgiwcgi_main` function, and thanks Ghidra we can decompile the code. I've just copied the interesting part:
+We have our `hedgiwcgi_main` function, and thanks to Ghidra we can decompile the code. I've just copied the interesting part:
 
 ```C
 ...
@@ -239,7 +240,7 @@ uVar2 = sobj_get_string(iVar1);
 sprintf(acStack1064,"%s/%s/postxml","/runtime/session",uVar2);
 ...
 ```
-First the code process our requests and obtains the UID, and later the UID is used in the `sprintf` statement to build a path that's stored in the stack. As we control the UID we can overwrite the stack and end up overwriting the saved return address. Ghidra helps us a bit telling us what type is `acStack1064`, if you check the decompiled code for `hedwigcgi_main` you'll find at the beginning:
+First, the code processes our requests and obtains the UID, and later the UID is used in the `sprintf` statement to build a path that's stored in the stack. As we control the UID we can overwrite the stack and end up overwriting the saved return address. Ghidra helps us a bit telling us what type is `acStack1064`, if you check the decompiled code for `hedwigcgi_main` you'll find at the beginning:
 
 ```C
 char acStack1064 [1024];
@@ -342,7 +343,7 @@ ql.mem.show_mapinfo()` and got:
 
 Now we know that our library is being loaded at: `0x774fc000`
 
-2) I' opened the `libuClibc-0.9.30.1.so` with Ghidra and looked fo `sleep` function offset:
+2) I opened the `libuClibc-0.9.30.1.so` with Ghidra and looked for `sleep` function offset:
 
 ```
 uint __stdcall sleep(uint __seconds)
@@ -350,7 +351,7 @@ uint __stdcall sleep(uint __seconds)
 00066bd0 02 00 1c 3c            lui        gp,0x2
 ...
 ```
-I got offset `0x00066bd0`. Then I concluded that doing base address + offset I was going to be fine, however after trial and error and checking other function addresses with GDB I found out that I needed t subtract 0x10000. So I came with the following Python function:
+I got offset `0x00066bd0`. Then I concluded that doing base address + offset I was going to be fine, however after trial and error and checking other function addresses with GDB I found out that I needed to subtract 0x10000. So I came with the following Python function:
 
 ```Python
 def calc_address(addr_offset):
@@ -391,7 +392,7 @@ nanosleep(0x7ff3c770, 0x7ff3c770) = 0 <--- Sleep is executed
 
 #### Playing with ROP and finishing the exploit
 
-Once I got the test working, I decided to explore how was possible to build what I think is a reliable exploit, for that, I've tried to avoid fixing addressess other than the ones from the `uClibc` and use ROP.
+Once I got the test working, I decided to explore how it was possible to build what I think is a reliable exploit, for that, I've tried to avoid fixing addresses other than the ones from the `uClibc` and use ROP.
 
 To be able to do that I needed different ROP gadgets that would perform the steps previously mentioned. To find them I performed some (slowly and painfull) manual work and complemented it with [devtty0's Ghidra scripts helpes](https://github.com/tacnetsol/ghidra_scripts/).
 
@@ -418,7 +419,7 @@ def copy_str(self, addr, l):
     return l_addr, s_addr
 ```
 
-The first gadget that I needed was one to execute `sleep()` while having a reasonable small value in `$a0` that will serve as argument in seconds to sleep. Also this gadget had to allow me maintain control of the execution flow. I found the following one:
+The first gadget that I needed was one to execute `sleep()` while having a reasonably small value in `$a0` that will serve as argument in seconds to sleep. Also this gadget had to allow me maintain control of the execution flow. I found the following one:
 
 _Note: All the gadgets were found in the libuClibc-0.9.30.1.so_
 
@@ -532,7 +533,7 @@ ioctl(0x1, 0x540d, 0x7ff3c8c8) = -1
 
 We can see the strings printed from our previous blog, the call to `nanosleep` made by the `sleep()` function and finally the call to `execve`. Job done.
 
-you can find the Python script to reproduce this [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_2/blob/master/qiling_dlink_exploit.py). I left comments to the helper functions mentioned during the blog post in case you want to play around or do some testing.
+You can find the Python script to reproduce this [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_2/blob/master/qiling_dlink_exploit.py). I left comments to the helper functions mentioned during the blog post in case you want to play around or do some testing.
 
 # References
 
