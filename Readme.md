@@ -409,7 +409,7 @@ nanosleep(0x7ff3c770, 0x7ff3c770) = 0 <--- Sleep is executed
 
 Once I got the test working, I decided to explore how it was possible to build what I think is a reliable exploit. To do so, I've tried to avoid fixing addresses other than the ones from the `uClibc` and use ROP.
 
-To be able to do that I needed different ROP gadgets that would perform the steps previously mentioned. To find them I performed some (slowly and painfull) manual work and complemented it with [devtty0's Ghidra scripts helpes](https://github.com/tacnetsol/ghidra_scripts/).
+To be able to do that I needed different ROP gadgets that would perform the steps previously mentioned. To find them I performed some (slowly and painfull) manual work and complemented it with [devtty0's Ghidra scripts helper](https://github.com/tacnetsol/ghidra_scripts/).
 
 >_Note: I had some issues with these scripts like false negatives or gadgets that did not work. Because of that I had to complement the work with some manual search._
 
